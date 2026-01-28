@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bluele/gcache"
 	corev1 "k8s.io/api/core/v1"
@@ -273,6 +274,20 @@ func Start(ctx context.Context, buildInfo trivyoperator.BuildInfo, operatorConfi
 		}
 		if err = ttlReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to setup TTLreport reconciler: %w", err)
+		}
+	}
+
+	// Cleanup orphaned reports in alternative storage
+	if operatorConfig.AltReportStorageEnabled && operatorConfig.AltReportDir != "" && operatorConfig.ScannerReportTTL != nil {
+		orphanedReportCleanup := &TTLOrphanedReportCleanupReconciler{
+			Logger:          ctrl.Log.WithName("reconciler").WithName("orphanedreportcleanup"),
+			Config:          operatorConfig,
+			Client:          mgr.GetClient(),
+			Clock:           ext.NewSystemClock(),
+			cleanupInterval: 1 * time.Minute,
+		}
+		if err = orphanedReportCleanup.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to setup orphaned report cleanup reconciler: %w", err)
 		}
 	}
 
